@@ -30,6 +30,13 @@ migrate = Migrate(app,db)
 # Models.
 #----------------------------------------------------------------------------#
 
+show_table = db.Table('show',
+    db.Column('start_time',db.DateTime, primary_key=True, nullable=False),
+    db.Column('venue_id',db.Integer, db.ForeignKey('venue.id'), primary_key=True, nullable=False),
+    db.Column('artist_id',db.Integer,db.ForeignKey('artist.id'), primary_key=True, nullable=False)
+)
+
+
 class Venue(db.Model):
     __tablename__ = 'venue'
 
@@ -42,6 +49,7 @@ class Venue(db.Model):
     genres = db.Column(db.String(200))
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
+    show_id = db.relationship('Artist', secondary=show_table, backref=db.backref('venues_of_show', lazy=True))
 
     def __repr__(self):
       return f'<Venue ID: {self.id}, name: {self.name}>'
@@ -59,6 +67,7 @@ class Artist(db.Model):
     genres = db.Column(db.String(120))
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
+    #show_id = db.relationship('Show', backref='artist_of_show', lazy=True)
 
     def __repr__(self):
       return f'<Artist ID: {self.id}, name: {self.name}>'
@@ -66,6 +75,8 @@ class Artist(db.Model):
     # TODO: implement any missing fields, as a database migration using Flask-Migrate
 
 # TODO Implement Show and Artist models, and complete all model relationships and properties, as a database migration.
+
+
 
 
 #----------------------------------------------------------------------------#
