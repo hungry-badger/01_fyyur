@@ -49,7 +49,7 @@ class Venue(db.Model):
     genres = db.Column(db.String(200))
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
-    show_id = db.relationship('Artist', secondary=show_table, backref=db.backref('venues_of_show', lazy=True))
+    artist_id = db.relationship('Artist', secondary=show_table, backref=db.backref('venues_of_show', lazy=True))
 
     def __repr__(self):
       return f'<Venue ID: {self.id}, name: {self.name}>'
