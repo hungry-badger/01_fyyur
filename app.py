@@ -16,7 +16,7 @@ from forms import *
 import sys
 import psycopg2
 import csv
-from datetime import date
+from datetime import date, datetime
 
 #----------------------------------------------------------------------------#
 # App Config.
@@ -100,10 +100,10 @@ class Artist(db.Model):
 def format_datetime(value, format='medium'):
   date = dateutil.parser.parse(value)
   if format == 'full':
-      format="yyyy, MM, dd 'at' HH:mm"
+      format = "EEEE MMMM, d, y 'at' h:mma"
   elif format == 'medium':
-      format="yyyy-MM-dd HH:mm:ss"
-  return babel.dates.format_datetime(date, format)
+      format="EE MM, dd, y h:mma"
+  return babel.dates.format_datetime(date, format, locale='en')
 
 app.jinja_env.filters['datetime'] = format_datetime
 
@@ -123,11 +123,30 @@ def index():
 def venues():
   # TODO: replace with real venues data.
   #       num_shows should be aggregated based on number of upcoming shows per venue.
-  query_data=Venue.query.all()
+  venue_data = Venue.query.order_by(Venue.city).order_by(Venue.state).all()
+  current_time = datetime.now().strftime('%Y-%m-%d %H:%S:%M')
   new_data = []
-  for d in  query_data:
-    new_data.append({"city": d.city, "state":d.state, "venues":[{"id":d.id,"name":d.name,"num_upcoming_shows":"0"}]}) 
-  return render_template('pages/venues.html', areas=new_data);
+  new_city_state = ''
+
+  for venue in venue_data:
+    if new_city_state == venue.city + venue.state:
+      new_data[len(new_data)-1]["venues"].append({
+        "id": venue.id,
+        "name":venue.name,
+        "num_upcoming_shows": 0
+      })
+    else:
+      new_city_state = venue.city + venue.state
+      new_data.append({
+        "city":venue.city,
+        "state":venue.state,
+        "venues": [{
+          "id": venue.id,
+          "name":venue.name,
+          "num_upcoming_shows": 0
+        }]
+      })
+  return render_template('pages/venues.html', areas=new_data)
 
 @app.route('/venues/search', methods=['POST'])
 def search_venues():
@@ -144,15 +163,27 @@ def show_venue(venue_id):
   # shows the venue page with the given venue_id
   # TODO: replace with real venue data from the venues table, using venue_id
   venue=Venue.query.get(venue_id)
-  print("We are here now")
-  nr_upcoming_shows = db.session.query(Show).filter(Show.venue_id==venue_id,Show.start_time > datetime.now()).count()
-  nr_completed_shows = db.session.query(Show).filter(Show.venue_id==venue_id,Show.start_time < datetime.now()).count()
-  upcoming_shows = db.session.query(Show).filter(Show.venue_id==venue_id,Show.start_time > datetime.now()).all()
-  completed_shows = db.session.query(Show).filter(Show.venue_id==venue_id,Show.start_time < datetime.now()).all()
-  print("Upcoming shows: "+str(nr_upcoming_shows))
-  print(str(type(upcoming_shows)))
-  print("Completed shows: "+str(nr_completed_shows))
-  print(str(type(completed_shows)))
+  nr_upcoming_shows = db.session.query(Artist,Show).join(Show, Show.artist_id==Artist.id).filter(Show.venue_id==venue_id,Show.start_time >= datetime.now()).count()
+  nr_completed_shows = db.session.query(Artist,Show).join(Show, Show.artist_id==Artist.id).filter(Show.venue_id==venue_id,Show.start_time < datetime.now()).count()
+  upcoming_artists = db.session.query(Artist.id,Artist.name,Artist.image_link,Show.start_time,Show.venue_id).join(Show, Show.artist_id==Artist.id).filter(Show.venue_id==venue_id,Show.start_time >= datetime.now()).all()
+  completed_artists = db.session.query(Artist.id,Artist.name,Artist.image_link,Show.start_time,Show.venue_id).join(Show, Show.artist_id==Artist.id).filter(Show.venue_id==venue_id,Show.start_time < datetime.now()).all()
+  
+  venue.upcoming_shows = []
+  for u in upcoming_artists:
+    artist_id=u[0]
+    artist_name =u[1]
+    artist_image_link=u[2]
+    start_time = u[3].strftime("%Y%m%d %H:%M:%S")
+    venue.upcoming_shows.append({'artist_id': artist_id, "artist_name": artist_name, "artist_image_link": artist_image_link, "start_time": start_time})
+  
+  venue.comp_art = []
+  for c in completed_artists:
+    artist_id=c[0]
+    artist_name =c[1]
+    artist_image_link=c[2]
+    start_time = c[3].strftime("%Y%m%d %H:%M:%S")
+    venue.comp_art.append({'artist_id': artist_id, "artist_name": artist_name, "artist_image_link": artist_image_link, "start_time": start_time})
+
   data={
     "id": venue.id,
     "name": venue.name,
@@ -166,12 +197,11 @@ def show_venue(venue_id):
     "seeking_talent": venue.seeking_talent,
     "seeking_description": venue.seeking_description,
     "image_link": venue.image_link,
-    "past_shows": [],
-    "upcoming_shows": [],
+    "past_shows": venue.comp_art,
+    "upcoming_shows": venue.upcoming_shows,
     "past_shows_count": nr_completed_shows,
     "upcoming_shows_count": nr_upcoming_shows,
   }
-  
   return render_template('pages/show_venue.html', venue=data)
 
 #  Create Venue
@@ -259,6 +289,27 @@ def show_artist(artist_id):
   # shows the venue page with the given venue_id
   # TODO: replace with real venue data from the venues table, using venue_id
   artist = Artist.query.get(artist_id)
+  new_table = db.session.query(Venue,Show).join(Show, Show.venue_id==Venue.id).all()
+  nr_upcoming_shows = db.session.query(Venue,Show).join(Show, Show.venue_id==Venue.id).filter(Show.artist_id==artist_id,Show.start_time >= datetime.now()).count()
+  nr_completed_shows = db.session.query(Venue,Show).join(Show, Show.venue_id==Venue.id).filter(Show.artist_id==artist_id,Show.start_time < datetime.now()).count()
+  upcoming_shows = db.session.query(Venue.id, Venue.name, Venue.image_link, Show.start_time, Show.artist_id).join(Show, Show.venue_id==Venue.id).filter(Show.artist_id==artist_id,Show.start_time >= datetime.now()).all()
+  completed_shows = db.session.query(Venue.id, Venue.name, Venue.image_link, Show.start_time, Show.artist_id).join(Show, Show.venue_id==Venue.id).filter(Show.artist_id==artist_id,Show.start_time < datetime.now()).all()
+  artist.up_shows = []
+  for u in upcoming_shows:
+    venue_id=u[0]
+    venue_name =u[1]
+    venue_image_link=u[2]
+    start_time = u[3].strftime("%Y%m%d %H:%M:%S")
+    artist.up_shows.append({'venue_id': venue_id, "venue_name": venue_name, "venue_image_link": venue_image_link, "start_time": start_time})
+  
+  artist.comp_shows = []
+  for c in completed_shows:
+    venue_id=u[0]
+    venue_name =u[1]
+    venue_image_link=u[2]
+    start_time = u[3].strftime("%Y%m%d %H:%M:%S")
+    artist.comp_shows.append({'venue_id': venue_id, "venue_name": venue_name, "venue_image_link": venue_image_link, "start_time": start_time})
+
   data1={
     "id": artist.id,
     "name": artist.name,
@@ -271,10 +322,10 @@ def show_artist(artist_id):
     "seeking_venue": artist.seeking_venue,
     "seeking_description": artist.seeking_description,
     "image_link": artist.image_link,
-    "past_shows": [],
-    "upcoming_shows": [],
-    "past_shows_count": 0,
-    "upcoming_shows_count": 0,
+    "past_shows": artist.comp_shows,
+    "upcoming_shows": artist.comp_shows,
+    "past_shows_count": nr_upcoming_shows,
+    "upcoming_shows_count": nr_completed_shows,
   }
   #data = list(filter(lambda d: d['id'] == artist_id, [data1, data2, data3]))[0]
   return render_template('pages/show_artist.html', artist=data1)
@@ -383,9 +434,10 @@ def shows():
   query_data=Show.query.all()
   new_data = []
   for d in  query_data:
-    venue_name = db.session.query(Venue.name).filter(Venue.id==d.venue_id).all()
-    artist_name = db.session.query(Artist.name).filter(Artist.id==d.artist_id).all()
+    venue_name = str(db.session.query(Venue.name).filter(Venue.id==d.venue_id).all()[0][0])
+    artist_name = str(db.session.query(Artist.name).filter(Artist.id==d.artist_id).all()[0][0])
     new_data.append({"start_time": str(d.start_time), "artist_image_link": "Empty", "venue_id":d.venue_id, "venue_name":venue_name, "artist_id": d.artist_id, "artist_name":artist_name}) 
+  
   return render_template('pages/shows.html', shows=new_data)
 
 @app.route('/shows/create')
@@ -402,18 +454,10 @@ def create_show_submission():
   body = {}
   try:
     artist_id = int(request.form.get('artist_id', ''))
-    print(artist_id)
     venue_id = int(request.form.get('venue_id', ''))
-    print(venue_id)
     time = request.form.get('start_time', '')
-    print(time)
-    print(str(type(time)))
     start_time = format_datetime(time)
-    print(start_time)
     show = Show(start_time=start_time, venue_id = venue_id, artist_id = artist_id)
-    print("Type of show : "+str(type(show)))
-    print(show)
-    print(str(show))
     db.session.add(show)
     db.session.commit()
     flash('Show was successfully listed!')
