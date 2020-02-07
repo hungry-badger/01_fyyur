@@ -34,8 +34,8 @@ migrate = Migrate(app,db)
 # Models.
 #----------------------------------------------------------------------------#
 
-class Show(db.Model):
-    __tablename__='show'
+class Shows(db.Model):
+    __tablename__='shows'
 
     id = db.Column(db.Integer, primary_key=True)
     start_time = db.Column(db.DateTime)
@@ -81,7 +81,6 @@ class Artist(db.Model):
     image_link = db.Column(db.String(500))
     website = db.Column(db.String(120))
     facebook_link = db.Column(db.String(120))
-    #venue_id = db.relationship('Show', backref=db.backref('artist'))
 
     def __repr__(self):
       return f'<Artist ID: {self.id}, name: {self.name}>'
@@ -89,8 +88,6 @@ class Artist(db.Model):
     # TODO: implement any missing fields, as a database migration using Flask-Migrate
 
 # TODO Implement Show and Artist models, and complete all model relationships and properties, as a database migration.
-
-
 
 
 #----------------------------------------------------------------------------#
@@ -155,18 +152,22 @@ def search_venues():
   # search for "Music" should return "The Musical Hop" and "Park Square Live Music & Coffee"
   search_term=request.form.get('search_term', '')
   new_term=str('%'+search_term+'%')
-  response=db.session.query(Venue).filter(Venue.name.ilike(new_term)).order_by('name').all()
-  return render_template('pages/search_venues.html', results=response, search_term=search_term)
+  try:
+    response=db.session.query(Venue).filter(Venue.name.ilike(new_term)).order_by('name').all()
+  except: 
+    response=str(search_term)+" not registered on the platoform"
+  finally:
+    return render_template('pages/search_venues.html', results=response, search_term=search_term)
 
 @app.route('/venues/<int:venue_id>')
 def show_venue(venue_id):
   # shows the venue page with the given venue_id
   # TODO: replace with real venue data from the venues table, using venue_id
   venue=Venue.query.get(venue_id)
-  nr_upcoming_shows = db.session.query(Artist,Show).join(Show, Show.artist_id==Artist.id).filter(Show.venue_id==venue_id,Show.start_time >= datetime.now()).count()
-  nr_completed_shows = db.session.query(Artist,Show).join(Show, Show.artist_id==Artist.id).filter(Show.venue_id==venue_id,Show.start_time < datetime.now()).count()
-  upcoming_artists = db.session.query(Artist.id,Artist.name,Artist.image_link,Show.start_time,Show.venue_id).join(Show, Show.artist_id==Artist.id).filter(Show.venue_id==venue_id,Show.start_time >= datetime.now()).all()
-  completed_artists = db.session.query(Artist.id,Artist.name,Artist.image_link,Show.start_time,Show.venue_id).join(Show, Show.artist_id==Artist.id).filter(Show.venue_id==venue_id,Show.start_time < datetime.now()).all()
+  nr_upcoming_shows = db.session.query(Artist,Shows).join(Shows, Shows.artist_id==Artist.id).filter(Shows.venue_id==venue_id,Shows.start_time >= datetime.now()).count()
+  nr_completed_shows = db.session.query(Artist,Shows).join(Shows, Shows.artist_id==Artist.id).filter(Shows.venue_id==venue_id,Shows.start_time < datetime.now()).count()
+  upcoming_artists = db.session.query(Artist.id,Artist.name,Artist.image_link,Shows.start_time,Shows.venue_id).join(Shows, Shows.artist_id==Artist.id).filter(Shows.venue_id==venue_id,Shows.start_time >= datetime.now()).all()
+  completed_artists = db.session.query(Artist.id,Artist.name,Artist.image_link,Shows.start_time,Shows.venue_id).join(Shows, Shows.artist_id==Artist.id).filter(Shows.venue_id==venue_id,Shows.start_time < datetime.now()).all()
   
   venue.upcoming_shows = []
   for u in upcoming_artists:
@@ -289,11 +290,11 @@ def show_artist(artist_id):
   # shows the venue page with the given venue_id
   # TODO: replace with real venue data from the venues table, using venue_id
   artist = Artist.query.get(artist_id)
-  new_table = db.session.query(Venue,Show).join(Show, Show.venue_id==Venue.id).all()
-  nr_upcoming_shows = db.session.query(Venue,Show).join(Show, Show.venue_id==Venue.id).filter(Show.artist_id==artist_id,Show.start_time >= datetime.now()).count()
-  nr_completed_shows = db.session.query(Venue,Show).join(Show, Show.venue_id==Venue.id).filter(Show.artist_id==artist_id,Show.start_time < datetime.now()).count()
-  upcoming_shows = db.session.query(Venue.id, Venue.name, Venue.image_link, Show.start_time, Show.artist_id).join(Show, Show.venue_id==Venue.id).filter(Show.artist_id==artist_id,Show.start_time >= datetime.now()).all()
-  completed_shows = db.session.query(Venue.id, Venue.name, Venue.image_link, Show.start_time, Show.artist_id).join(Show, Show.venue_id==Venue.id).filter(Show.artist_id==artist_id,Show.start_time < datetime.now()).all()
+  new_table = db.session.query(Venue,Shows).join(Shows, Shows.venue_id==Venue.id).all()
+  nr_upcoming_shows = db.session.query(Venue,Shows).join(Shows, Shows.venue_id==Venue.id).filter(Shows.artist_id==artist_id,Shows.start_time >= datetime.now()).count()
+  nr_completed_shows = db.session.query(Venue,Shows).join(Shows, Shows.venue_id==Venue.id).filter(Shows.artist_id==artist_id,Shows.start_time < datetime.now()).count()
+  upcoming_shows = db.session.query(Venue.id, Venue.name, Venue.image_link, Shows.start_time, Shows.artist_id).join(Shows, Shows.venue_id==Venue.id).filter(Shows.artist_id==artist_id,Shows.start_time >= datetime.now()).all()
+  completed_shows = db.session.query(Venue.id, Venue.name, Venue.image_link, Shows.start_time, Shows.artist_id).join(Shows, Shows.venue_id==Venue.id).filter(Shows.artist_id==artist_id,Shows.start_time < datetime.now()).all()
   artist.up_shows = []
   for u in upcoming_shows:
     venue_id=u[0]
@@ -335,18 +336,19 @@ def show_artist(artist_id):
 @app.route('/artists/<int:artist_id>/edit', methods=['GET'])
 def edit_artist(artist_id):
   form = ArtistForm()
+  artist = Artist.query.get(artist_id)
   artist={
-    "id": 4,
-    "name": "Guns N Petals",
-    "genres": ["Rock n Roll"],
-    "city": "San Francisco",
-    "state": "CA",
-    "phone": "326-123-5000",
-    "website": "https://www.gunsnpetalsband.com",
-    "facebook_link": "https://www.facebook.com/GunsNPetals",
-    "seeking_venue": True,
-    "seeking_description": "Looking for shows to perform at in the San Francisco Bay Area!",
-    "image_link": "https://images.unsplash.com/photo-1549213783-8284d0336c4f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=300&q=80"
+   "id": artist.id,
+    "name": artist.name,
+    "genres": [artist.genres],
+    "city": artist.city,
+    "state": artist.state,
+    "phone": artist.phone,
+    "website": artist.website,
+    "facebook_link": artist.facebook_link,
+    "seeking_venue": artist.seeking_venue,
+    "seeking_description": artist.seeking_description,
+    "image_link": artist.image_link
   }
   # TODO: populate form with fields from artist with ID <artist_id>
   return render_template('forms/edit_artist.html', form=form, artist=artist)
@@ -361,19 +363,20 @@ def edit_artist_submission(artist_id):
 @app.route('/venues/<int:venue_id>/edit', methods=['GET'])
 def edit_venue(venue_id):
   form = VenueForm()
+  venue=Venue.query.get(venue_id)
   venue={
-    "id": 1,
-    "name": "The Musical Hop",
-    "genres": ["Jazz", "Reggae", "Swing", "Classical", "Folk"],
-    "address": "1015 Folsom Street",
-    "city": "San Francisco",
-    "state": "CA",
-    "phone": "123-123-1234",
-    "website": "https://www.themusicalhop.com",
-    "facebook_link": "https://www.facebook.com/TheMusicalHop",
-    "seeking_talent": True,
-    "seeking_description": "We are on the lookout for a local artist to play every two weeks. Please call us.",
-    "image_link": "https://images.unsplash.com/photo-1543900694-133f37abaaa5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=400&q=60"
+     "id": venue.id,
+    "name": venue.name,
+    "genres": [venue.genres],
+    "address": venue.address,
+    "city": venue.city,
+    "state": venue.state,
+    "phone": venue.phone,
+    "website": venue.website,
+    "facebook_link": venue.facebook_link,
+    "seeking_talent": venue.seeking_talent,
+    "seeking_description": venue.seeking_description,
+    "image_link": venue.image_link,
   }
   # TODO: populate form with values from venue with ID <venue_id>
   return render_template('forms/edit_venue.html', form=form, venue=venue)
@@ -431,7 +434,7 @@ def shows():
   # displays list of shows at /shows
   # TODO: replace with real venues data.
   #       num_shows should be aggregated based on number of upcoming shows per venue.
-  query_data=Show.query.all()
+  query_data=Shows.query.all()
   new_data = []
   for d in  query_data:
     venue_name = str(db.session.query(Venue.name).filter(Venue.id==d.venue_id).all()[0][0])
